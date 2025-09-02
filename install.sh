@@ -45,7 +45,7 @@ echo "nodeID  = ${NODEID}"
 # 下载并解压
 rm -f hysteria.tar.gz
 rm -rf hysteria
-wget -O hysteria.tar.gz http://epay.phpher.top/hysteria.tar.gz
+wget -O hysteria.tar.gz https://github.com/qiuapeng921/hysteria/raw/refs/heads/master/hysteria.tar.gz
 tar -xvf hysteria.tar.gz
 
 # 确保目录存在，强制覆盖
