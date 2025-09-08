@@ -78,6 +78,11 @@ acl:
     - reject(192.168.0.0/16)
     - reject(127.0.0.0/8)
     - reject(fc00::/7)
+masquerade:
+  type: proxy
+  proxy:
+    url: https://herobrave.top/
+    rewriteHost: true    
 EOF
 
 # 写 systemd 服务（覆盖）
