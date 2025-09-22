@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 # 初始化为空
@@ -41,6 +41,34 @@ echo "apiHost = ${APIHOST}"
 echo "apiKey  = ${APIKEY}"
 echo "nodeID  = ${NODEID}"
 
+# 检测系统类型
+if command -v systemctl >/dev/null 2>&1; then
+    SYSTEM_TYPE="systemd"
+elif command -v rc-service >/dev/null 2>&1; then
+    SYSTEM_TYPE="openrc"
+else
+    echo "错误: 不支持的系统（未检测到 systemd 或 OpenRC）"
+    exit 1
+fi
+
+echo "检测到系统类型: $SYSTEM_TYPE"
+
+# 安装必要工具
+if [ "$SYSTEM_TYPE" = "openrc" ]; then
+    apk update
+    apk add --no-cache wget tar curl
+else
+    # CentOS 使用 yum，兼容其他 systemd 系统
+    if ! command -v wget >/dev/null 2>&1; then
+        yum install -y wget
+    fi
+    if ! command -v tar >/dev/null 2>&1; then
+        yum install -y tar
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        yum install -y curl
+    fi
+fi
 
 # 下载并解压
 rm -f hysteria.tar.gz
@@ -85,8 +113,10 @@ masquerade:
     rewriteHost: true    
 EOF
 
-# 写 systemd 服务（覆盖）
-cat > /etc/systemd/system/hysteria.service <<EOF
+# 根据系统类型配置服务
+if [ "$SYSTEM_TYPE" = "systemd" ]; then
+    # 写入 systemd 服务（覆盖）
+    cat > /etc/systemd/system/hysteria.service <<EOF
 [Unit]
 Description=Hysteria2 Server
 After=network.target
@@ -100,11 +130,39 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-# 重新加载 systemd 并启动
-systemctl daemon-reload
-systemctl enable hysteria
-systemctl restart hysteria
+    # 重新加载 systemd 并启动
+    systemctl daemon-reload
+    systemctl enable hysteria
+    systemctl restart hysteria
+else
+    # 写入 OpenRC 服务文件（覆盖）
+    cat > /etc/init.d/hysteria <<EOF
+#!/sbin/openrc-run
 
+name="hysteria"
+description="Hysteria2 Server"
+command="/usr/local/bin/hysteria"
+command_args="-c /etc/hysteria/config.yaml server"
+pidfile="/var/run/hysteria.pid"
+command_background="yes"
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath -d -m 0755 -o root:root /var/run
+}
+EOF
+
+    # 设置服务文件权限并启用
+    chmod +x /etc/init.d/hysteria
+    rc-update add hysteria default
+    rc-service hysteria restart
+fi
+
+# 清理临时文件
 rm -rf hysteria*
 
 echo "Hysteria2 安装完成并已启动"
