@@ -148,12 +148,8 @@ command_background="yes"
 
 depend() {
     need net
-    after firewall
 }
 
-start_pre() {
-    checkpath -d -m 0755 -o root:root /var/run
-}
 EOF
 
     # 设置服务文件权限并启用
