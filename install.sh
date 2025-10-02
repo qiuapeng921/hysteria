@@ -58,15 +58,15 @@ if [ "$SYSTEM_TYPE" = "openrc" ]; then
     apk update
     apk add --no-cache wget tar curl
 else
-    # CentOS 使用 yum，兼容其他 systemd 系统
-    if ! command -v wget >/dev/null 2>&1; then
-        yum install -y wget
-    fi
-    if ! command -v tar >/dev/null 2>&1; then
-        yum install -y tar
-    fi
-    if ! command -v curl >/dev/null 2>&1; then
-        yum install -y curl
+    # systemd 系统，区分 yum / apt
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y wget tar curl
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y wget tar curl
+    else
+        echo "错误: 未找到合适的包管理器 (apt-get 或 yum)"
+        exit 1
     fi
 fi
 
