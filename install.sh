@@ -56,14 +56,14 @@ echo "检测到系统类型: $SYSTEM_TYPE"
 # 安装必要工具
 if [ "$SYSTEM_TYPE" = "openrc" ]; then
     apk update
-    apk add --no-cache wget tar curl
+    apk add --no-cache tar htop
 else
     # systemd 系统，区分 yum / apt
     if command -v apt-get >/dev/null 2>&1; then
         apt-get update
-        apt-get install -y wget tar curl
+        apt-get install -y tar htop
     elif command -v yum >/dev/null 2>&1; then
-        yum install -y wget tar curl
+        yum install -y tar htop
     else
         echo "错误: 未找到合适的包管理器 (apt-get 或 yum)"
         exit 1
