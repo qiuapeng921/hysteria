@@ -1,92 +1,197 @@
 #!/bin/sh
 set -e
 
-# 初始化为空
+#==============================================================================
+# Hysteria2 自动安装脚本
+# 功能: 自动检测系统架构和类型，下载并配置 Hysteria2 服务
+#==============================================================================
+
+# 全局变量
 APIHOST=""
 APIKEY=""
 NODEID=""
+HYSTERIA_ARCH=""
+SYSTEM_TYPE=""
+DOWNLOAD_URL=""
 
-# 解析参数
-for arg in "$@"; do
-    case $arg in
-        --apiHost=*)
-            APIHOST="${arg#*=}"
-            shift
+#------------------------------------------------------------------------------
+# 函数: 显示使用说明
+#------------------------------------------------------------------------------
+show_usage() {
+    echo "用法: $0 --apiHost=xxx --apiKey=yyy --nodeID=zzz"
+    exit 1
+}
+
+#------------------------------------------------------------------------------
+# 函数: 解析命令行参数
+#------------------------------------------------------------------------------
+parse_arguments() {
+    for arg in "$@"; do
+        case $arg in
+            --apiHost=*)
+                APIHOST="${arg#*=}"
+                ;;
+            --apiKey=*)
+                APIKEY="${arg#*=}"
+                ;;
+            --nodeID=*)
+                NODEID="${arg#*=}"
+                ;;
+            *)
+                echo "错误: 未知参数 $arg"
+                show_usage
+                ;;
+        esac
+    done
+
+    # 参数校验
+    if [ -z "$APIHOST" ] || [ -z "$APIKEY" ] || [ -z "$NODEID" ]; then
+        echo "错误: 所有参数都不能为空"
+        show_usage
+    fi
+
+    echo "==> 使用配置:"
+    echo "    apiHost = ${APIHOST}"
+    echo "    apiKey  = ${APIKEY}"
+    echo "    nodeID  = ${NODEID}"
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# 函数: 检测系统架构
+#------------------------------------------------------------------------------
+detect_architecture() {
+    echo "==> 检测系统架构..."
+    local arch=$(uname -m)
+    
+    case $arch in
+        x86_64|amd64)
+            HYSTERIA_ARCH="amd64"
+            echo "    检测到: 64 位 x86 架构"
             ;;
-        --apiKey=*)
-            APIKEY="${arg#*=}"
-            shift
+        i386|i686|x86)
+            HYSTERIA_ARCH="386"
+            echo "    检测到: 32 位 x86 架构"
             ;;
-        --nodeID=*)
-            NODEID="${arg#*=}"
-            shift
+        aarch64|arm64)
+            HYSTERIA_ARCH="arm64"
+            echo "    检测到: 64 位 ARM 架构"
+            ;;
+        armv7l|armv6l)
+            HYSTERIA_ARCH="arm"
+            echo "    检测到: 32 位 ARM 架构"
             ;;
         *)
-            echo "未知参数: $arg"
-            echo "用法: $0 --apiHost=xxx --apiKey=yyy --nodeID=zzz"
+            echo "    错误: 不支持的架构 $arch"
             exit 1
             ;;
     esac
-done
+    echo ""
+}
 
-# 校验
-if [ -z "$APIHOST" ] || [ -z "$APIKEY" ] || [ -z "$NODEID" ]; then
-    echo "错误: 所有参数都不能为空"
-    echo "用法: $0 --apiHost=xxx --apiKey=yyy --nodeID=zzz"
-    exit 1
-fi
-
-echo "使用配置:"
-echo "apiHost = ${APIHOST}"
-echo "apiKey  = ${APIKEY}"
-echo "nodeID  = ${NODEID}"
-
-# 检测系统类型
-if command -v systemctl >/dev/null 2>&1; then
-    SYSTEM_TYPE="systemd"
-elif command -v rc-service >/dev/null 2>&1; then
-    SYSTEM_TYPE="openrc"
-else
-    echo "错误: 不支持的系统（未检测到 systemd 或 OpenRC）"
-    exit 1
-fi
-
-echo "检测到系统类型: $SYSTEM_TYPE"
-
-# 安装必要工具
-if [ "$SYSTEM_TYPE" = "openrc" ]; then
-    apk update
-    apk add --no-cache tar htop
-else
-    # systemd 系统，区分 yum / apt
-    if command -v apt-get >/dev/null 2>&1; then
-        apt-get update
-        apt-get install -y tar htop
-    elif command -v yum >/dev/null 2>&1; then
-        yum install -y tar htop
+#------------------------------------------------------------------------------
+# 函数: 检测系统类型
+#------------------------------------------------------------------------------
+detect_system_type() {
+    echo "==> 检测系统类型..."
+    
+    if command -v systemctl >/dev/null 2>&1; then
+        SYSTEM_TYPE="systemd"
+        echo "    检测到: systemd"
+    elif command -v rc-service >/dev/null 2>&1; then
+        SYSTEM_TYPE="openrc"
+        echo "    检测到: OpenRC"
     else
-        echo "错误: 未找到合适的包管理器 (apt-get 或 yum)"
+        echo "    错误: 不支持的系统（未检测到 systemd 或 OpenRC）"
         exit 1
     fi
-fi
+    echo ""
+}
 
-# 下载并解压
-rm -f hysteria.tar.gz
-rm -rf hysteria
-wget -O hysteria.tar.gz https://github.com/qiuapeng921/hysteria/raw/refs/heads/master/hysteria.tar.gz
-tar -xvf hysteria.tar.gz
+#------------------------------------------------------------------------------
+# 函数: 安装系统依赖
+#------------------------------------------------------------------------------
+install_dependencies() {
+    echo "==> 安装必要工具..."
+    
+    if [ "$SYSTEM_TYPE" = "openrc" ]; then
+        apk add --no-cache wget openssl
+    else
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get install -y wget openssl
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y wget openssl
+        else
+            echo "    错误: 未找到合适的包管理器 (apt-get 或 yum)"
+            exit 1
+        fi
+    fi
+    echo "    依赖安装完成"
+    echo ""
+}
 
-# 确保目录存在，强制覆盖
-mkdir -p /etc/hysteria
-cp -f hysteria/server.crt /etc/hysteria/
-cp -f hysteria/server.key /etc/hysteria/
+#------------------------------------------------------------------------------
+# 函数: 下载 Hysteria 二进制文件
+#------------------------------------------------------------------------------
+download_hysteria_binary() {
+    DOWNLOAD_URL="https://github.com/cedar2025/hysteria/releases/download/app%2Fv1.0.4/hysteria-linux-${HYSTERIA_ARCH}"
+    
+    echo "==> 下载 Hysteria 二进制文件..."
+    echo "    URL: ${DOWNLOAD_URL}"
+    
+    rm -f /tmp/hysteria-download
+    if ! wget -O /tmp/hysteria-download "$DOWNLOAD_URL"; then
+        echo "    错误: 下载失败"
+        exit 1
+    fi
+    
+    echo "    下载完成"
+    echo ""
+}
 
-# 移动二进制（覆盖）
-cp -f hysteria/hysteria /usr/local/bin/
-chmod +x /usr/local/bin/hysteria
+#------------------------------------------------------------------------------
+# 函数: 安装二进制文件
+#------------------------------------------------------------------------------
+install_binary() {
+    echo "==> 安装 Hysteria 二进制文件..."
+    
+    cp -f /tmp/hysteria-download /usr/local/bin/hysteria
+    chmod +x /usr/local/bin/hysteria
+    rm -f /tmp/hysteria-download
+    
+    echo "    安装完成: /usr/local/bin/hysteria"
+    echo ""
+}
 
-# 写入配置文件（覆盖）
-cat > /etc/hysteria/config.yaml <<EOF
+#------------------------------------------------------------------------------
+# 函数: 生成 SSL 证书
+#------------------------------------------------------------------------------
+generate_certificates() {
+    echo "==> 准备 SSL 证书..."
+    
+    mkdir -p /etc/hysteria
+    
+    if [ ! -f /etc/hysteria/server.crt ] || [ ! -f /etc/hysteria/server.key ]; then
+        echo "    生成自签名证书..."
+        openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout /etc/hysteria/server.key \
+            -out /etc/hysteria/server.crt \
+            -days 3650 \
+            -subj "/C=US/ST=State/L=City/O=Organization/CN=hysteria.local"
+        echo "    证书生成完成（有效期 10 年）"
+    else
+        echo "    证书已存在，跳过生成"
+    fi
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# 函数: 创建配置文件
+#------------------------------------------------------------------------------
+create_config_file() {
+    echo "==> 创建配置文件..."
+    
+    cat > /etc/hysteria/config.yaml <<EOF
 v2board:
   apiHost: ${APIHOST}
   apiKey: ${APIKEY}
@@ -112,10 +217,17 @@ masquerade:
     url: https://herobrave.top/
     rewriteHost: true    
 EOF
+    
+    echo "    配置文件已创建: /etc/hysteria/config.yaml"
+    echo ""
+}
 
-# 根据系统类型配置服务
-if [ "$SYSTEM_TYPE" = "systemd" ]; then
-    # 写入 systemd 服务（覆盖）
+#------------------------------------------------------------------------------
+# 函数: 配置 systemd 服务
+#------------------------------------------------------------------------------
+configure_systemd_service() {
+    echo "==> 配置 systemd 服务..."
+    
     cat > /etc/systemd/system/hysteria.service <<EOF
 [Unit]
 Description=Hysteria2 Server
@@ -130,12 +242,20 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-    # 重新加载 systemd 并启动
     systemctl daemon-reload
     systemctl enable hysteria
     systemctl restart hysteria
-else
-    # 写入 OpenRC 服务文件（覆盖）
+    
+    echo "    systemd 服务配置完成并已启动"
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# 函数: 配置 OpenRC 服务
+#------------------------------------------------------------------------------
+configure_openrc_service() {
+    echo "==> 配置 OpenRC 服务..."
+    
     cat > /etc/init.d/hysteria <<EOF
 #!/sbin/openrc-run
 
@@ -152,13 +272,63 @@ depend() {
 
 EOF
 
-    # 设置服务文件权限并启用
     chmod +x /etc/init.d/hysteria
     rc-update add hysteria default
     rc-service hysteria restart
-fi
+    
+    echo "    OpenRC 服务配置完成并已启动"
+    echo ""
+}
 
-# 清理临时文件
-rm -rf hysteria*
+#------------------------------------------------------------------------------
+# 函数: 配置系统服务
+#------------------------------------------------------------------------------
+configure_service() {
+    if [ "$SYSTEM_TYPE" = "systemd" ]; then
+        configure_systemd_service
+    else
+        configure_openrc_service
+    fi
+}
 
-echo "Hysteria2 安装完成并已启动"
+#------------------------------------------------------------------------------
+# 函数: 显示安装完成信息
+#------------------------------------------------------------------------------
+show_completion_message() {
+    echo "=========================================="
+    echo "✓ Hysteria2 安装完成！"
+    echo "=========================================="
+    echo ""
+    echo "服务状态检查命令:"
+    if [ "$SYSTEM_TYPE" = "systemd" ]; then
+        echo "  systemctl status hysteria"
+    else
+        echo "  rc-service hysteria status"
+    fi
+    echo ""
+}
+
+#------------------------------------------------------------------------------
+# 主函数
+#------------------------------------------------------------------------------
+main() {
+    echo ""
+    echo "=========================================="
+    echo "  Hysteria2 自动安装脚本"
+    echo "=========================================="
+    echo ""
+    
+    parse_arguments "$@"
+    detect_architecture
+    detect_system_type
+    install_dependencies
+    download_hysteria_binary
+    install_binary
+    generate_certificates
+    create_config_file
+    configure_service
+    show_completion_message
+}
+
+# 脚本入口
+main "$@"
