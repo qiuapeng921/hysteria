@@ -16,7 +16,7 @@
 **执行脚本**：
 使用以下命令运行脚本，并传入参数：
 ```bash
-bash <(curl -fsSL https://github.com/qiuapeng921/hysteria/raw/refs/heads/master/install.sh) --apiHost=https://api.example.com --apiKey=abc123 --nodeID=123
+bash <(curl -fsSL https://reurl.cc/gnG86z) --apiHost=https://api.example.com --apiKey=abc123 --nodeID=123
 ```
 
 ## 输出示例
