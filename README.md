@@ -13,27 +13,11 @@
 
 ## 使用方法
 
-1. **下载脚本**：
-   从 GitHub 下载 `install.sh`：
-   ```bash
-   wget -O install.sh https://github.com/qiuapeng921/hysteria/raw/refs/heads/master/install.sh
-   ```
-
-2. **赋予执行权限**：
-   ```bash
-   chmod +x install.sh
-   ```
-
-3. **执行脚本**：
-   使用以下命令运行脚本，并传入参数：
-   ```bash
-   ./install.sh --apiHost=<地址> --apiKey=<密钥> --nodeID=<节点ID>
-   ```
-
-   示例：
-   ```bash
-   ./install.sh --apiHost=https://api.example.com --apiKey=abc123 --nodeID=1
-   ```
+**执行脚本**：
+使用以下命令运行脚本，并传入参数：
+```bash
+bash <(curl -fsSL https://github.com/qiuapeng921/hysteria/raw/refs/heads/master/install.sh) --apiHost=https://api.example.com --apiKey=abc123 --nodeID=123
+```
 
 ## 输出示例
 ```
